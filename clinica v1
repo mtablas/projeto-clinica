@@ -1,0 +1,1273 @@
+import calendar
+from select import select
+import tkinter as tk
+from tkinter import ttk
+from tkinter import messagebox
+import tkcalendar
+from tkinter import messagebox
+from PIL import Image, ImageTk
+from controler import UsuarioControler, EnderecoControler, ClienteControler, FichaControler, AgendamentoControler
+from modelo import Usuario, Endereco, Cliente
+from email.message import EmailMessage
+import ssl
+import smtplib
+import pycep_correios
+import uuid
+from datetime import datetime, timedelta
+import segredo
+from tkinter import simpledialog
+
+
+class JanelaPrincipal(tk.Tk):
+
+    def __init__(self):
+        super().__init__()
+        self.title('Sistema de gerenciamento de clínicas V1')
+        self.attributes('-fullscreen', True)
+
+        self.menubar = tk.Menu(self)
+        self.config(menu=self.menubar)
+        self.menu_principal = tk.Menu(self.menubar)
+        self.menu_principal.add_command(label='Usuário', command=self.menu_usuario_click)
+        self.menu_principal.add_separator()
+        self.menu_principal.add_command(label='Logout', command=self.menu_logout_click)
+        self.menu_principal.add_separator()
+        self.menu_principal.add_command(label='Sair', command=self.menu_sair_click)
+
+        self.menu_cliente = tk.Menu(self.menubar)
+        self.menu_cliente.add_command(label = 'Gestão de Clientes', command=self.menu_gestao_clienteclick)        
+        self.menu_cliente.add_separator()
+        self.menu_cliente.add_command(label = 'Cadastro de Clientes', command=self.menu_clienteclick)
+        self.menu_cliente.add_separator()
+        self.menu_cliente.add_command(label = 'Cadastro de Endereços', command=self.menu_enderecoclick)
+
+        self.menu_teste = tk.Menu(self.menubar)
+        self.menu_teste.add_command(label = 'teste', command=self.menu_testeclick)
+
+        self.menu_ficha = tk.Menu(self.menubar)
+        self.menu_ficha.add_command(label = 'ficha', command=self.menu_fichaclick)
+
+        self.menu_agendamento = tk.Menu(self.menubar)
+        self.menu_agendamento.add_command(label = 'Agendamento', command=self.menu_agendamentoclick)
+
+        self.menubar.add_cascade(label='Principal', menu=self.menu_principal, underline=0)
+        self.menubar.add_cascade(label = 'Cliente', menu=self.menu_cliente, underline=0)
+        self.menubar.add_cascade(label = 'Ficha', menu=self.menu_cliente, underline=0)
+        self.menubar.add_cascade(label = 'Teste', menu=self.menu_teste, underline=0)
+        self.menubar.add_cascade(label = 'Agendamento', menu=self.menu_agendamento, underline=0)    
+
+        self.barra_status = tk.Label(self, text='Sistema de gerenciamento de clínicas V1 [Usuário não autenticado]', relief=tk.SUNKEN, font=('Arial', 16))
+        self.barra_status.pack(side=tk.BOTTOM, fill=tk.X)
+
+        self.login = JanelaLogin(self)
+        JanelaLogin.focus_set(self)
+        self.login.grab_set()
+
+        self.bind('<Control-g>', self.menu_agendamentoclick)
+        self.bind('<Control-d>', self.menu_clienteclick) 
+
+    def menu_gestao_clienteclick(self, event=''):
+        janela = JanelaGestaoCliente(self)        
+
+    def menu_clienteclick(self, event=''):
+        janela = JanelaCliente(self)
+    
+    def menu_enderecoclick(self):
+        janela = JanelaEndereco(self)
+
+    def menu_fichaclick(self):
+        janela = JanelaFicha(self)
+
+    def menu_testeclick(self):
+        janela = JanelaTeste(self)
+
+    def menu_agendamentoclick(self):
+        sala = simpledialog.askstring('Selecione a sala', 'Por gentileza informe o numero a sala:', parent=self)
+        janela = JanelaAgendamento(self, sala)
+
+    def menu_logout_click(self):
+        self.login = JanelaLogin(self)
+        self.login.grab_set()
+
+    def menu_usuario_click(self):
+        janela = JanelaUsuario(self)
+
+    def menu_sair_click(self):
+        self.destroy()
+
+    def efetuar_login(self, usuario):
+        self.usuario = usuario
+        self.barra_status['text'] = f'Sistema de gerenciamento de clínicas V1 [{self.usuario}]'
+
+class JanelaCliente(tk.Toplevel):
+
+    def __init__(self, master):
+        super().__init__(master = master)
+        self.title('Cadastro de clientes')
+        self.grab_set()        
+
+        self.window_width = 1050
+        self.window_height = 700
+        largura_screen = self.winfo_screenwidth()
+        altura_screen = self.winfo_screenheight()
+        posx = largura_screen/2 - self.window_width/2
+        posy = altura_screen/2 - self.window_height/2
+        self.geometry('%dx%d+%d+%d' % (self.window_width, self.window_height, posx, posy))
+        self.resizable(False, False)
+
+        self.tab_view = ttk.Notebook(self)
+        self.tab_cliente = ttk.Frame(self.tab_view)
+        self.tab_ficha = ttk.Frame(self.tab_view)
+        self.tab_view.add(self.tab_cliente, text='DADOS DO CLIENTE')
+        self.tab_view.add(self.tab_ficha, text='FICHAS DO CLIENTE', state='disabled')
+        self.tab_view.pack(expand=1, fill='both')
+
+        self.codigo_cliente = None
+
+        self.label_nome = ttk.Label(self.tab_cliente, text='NOME:', style='biblioteca.TLabel')
+        self.label_nome.place(x=25, y=35)
+        self.svar_nome = tk.StringVar()
+        self.entry_nome = ttk.Entry(self.tab_cliente, state='enabled', width=100, textvariable=self.svar_nome)
+        self.entry_nome.place(x=135, y=32)
+
+        self.label_cpf = ttk.Label(self.tab_cliente, text='CPF:', style='biblioteca.TLabel')
+        self.label_cpf.place(x=25, y=75)
+        self.svar_cpf = tk.StringVar()
+        self.entry_cpf = ttk.Entry(self.tab_cliente, state='disabled', width=25, textvariable=self.svar_cpf)
+        self.entry_cpf.place(x=135, y=72)
+
+        self.label_rg = ttk.Label(self.tab_cliente, text='RG:', style='biblioteca.TLabel')
+        self.label_rg.place(x=485, y=75)
+        self.svar_rg = tk.StringVar()
+        self.entry_rg = ttk.Entry(self.tab_cliente, state='disabled', width=25, textvariable=self.svar_rg)
+        self.entry_rg.place(x=615, y=72)
+
+        self.label_telefone_celular = ttk.Label(self.tab_cliente, text='TELEFONE CELULAR:', style='biblioteca.TLabel')
+        self.label_telefone_celular.place(x=25, y=115)
+        self.svar_telefone_celular = tk.StringVar()
+        self.entry_telefone_celular = ttk.Entry(self.tab_cliente, state='disabled', width=25, textvariable=self.svar_telefone_celular)
+        self.entry_telefone_celular.place(x=135, y=112)
+
+        self.label_telefone_fixo = ttk.Label(self.tab_cliente, text='TELEFONE FIXO:', style='biblioteca.TLabel')
+        self.label_telefone_fixo.place(x=485, y=115)
+        self.svar_telefone_fixo = tk.StringVar()
+        self.entry_telefone_fixo = ttk.Entry(self.tab_cliente, state='disabled', width=25, textvariable=self.svar_telefone_fixo)
+        self.entry_telefone_fixo.place(x=615, y=112)
+
+        self.label_email = ttk.Label(self.tab_cliente, text='EMAIL:', style='biblioteca.TLabel')
+        self.label_email.place(x=25, y=155)
+        self.svar_email = tk.StringVar()
+        self.entry_email = ttk.Entry(self.tab_cliente, state='enabled', width=100, textvariable=self.svar_email)
+        self.entry_email.place(x=135, y=152)
+
+        self.label_codigo_convenio = ttk.Label(self.tab_cliente, text='CONVÊNIO:', style='biblioteca.TLabel')
+        self.label_codigo_convenio.place(x=485, y=195)
+        self.svar_codigo_convenio = tk.StringVar()
+        self.menu_codigo_convenio = ttk.Combobox(self.tab_cliente, state='disabled', textvariable=self.svar_codigo_convenio)
+        self.menu_codigo_convenio['values'] = ['GYMPASS', 'UNIMED', 'AMS', 'OUTRO']
+        self.menu_codigo_convenio.place(x=615, y=192)
+
+        self.label_responsavel_nome = ttk.Label(self.tab_cliente, text='EM CASO DE EMERGÊNCIA:', style='biblioteca.TLabel')
+        self.label_responsavel_nome.place(x=25, y=235)
+
+        self.label_responsavel_nome = ttk.Label(self.tab_cliente, text='NOME:', style='biblioteca.TLabel')
+        self.label_responsavel_nome.place(x=25, y=275)
+        self.svar_responsavel_nome = tk.StringVar()
+        self.entry_responsavel_nome = ttk.Entry(self.tab_cliente, state='disabled', width=50, textvariable=self.svar_responsavel_nome)
+        self.entry_responsavel_nome.place(x=135, y=272)
+
+        self.label_responsavel_telefone = ttk.Label(self.tab_cliente, text='TELEFONE:', style='biblioteca.TLabel')
+        self.label_responsavel_telefone.place(x=485, y=275)
+        self.svar_responsavel_telefone = tk.StringVar()
+        self.entry_responsavel_telefone = ttk.Entry(self.tab_cliente, state='disabled', width=25, textvariable=self.svar_responsavel_telefone)
+        self.entry_responsavel_telefone.place(x=615, y=272)
+
+        self.label_responsavel_nome = ttk.Label(self.tab_cliente, text='DADOS PAGAMENTO:', style='biblioteca.TLabel')
+        self.label_responsavel_nome.place(x=25, y=315)
+
+        self.int_financeiro = tk.IntVar()
+        self.check_financeiro = tk.Checkbutton(self.tab_cliente, text='Cliente Pagante', state= 'disabled', variable=self.int_financeiro, command=self.alternar_checkbox) 
+        self.check_financeiro.place(x=185, y=315)
+
+        self.label_financeiro_nome = ttk.Label(self.tab_cliente, text='NOME:', style='biblioteca.TLabel')
+        self.label_financeiro_nome.place(x=25, y=355)
+        self.svar_financeiro_nome = tk.StringVar()
+        self.entry_financeiro_nome = ttk.Entry(self.tab_cliente, state='disabled', width=50, textvariable=self.svar_financeiro_nome)
+        self.entry_financeiro_nome.place(x=135, y=352)
+
+        self.label_financeiro_cpf = ttk.Label(self.tab_cliente, text='CPF:', style='biblioteca.TLabel')
+        self.label_financeiro_cpf.place(x=485, y=355)
+        self.svar_financeiro_cpf = tk.StringVar()
+        self.entry_financeiro_cpf = ttk.Entry(self.tab_cliente, state='disabled', width=25, textvariable=self.svar_financeiro_cpf)
+        self.entry_financeiro_cpf.place(x=615, y=352)
+
+        self.label_procedencia = ttk.Label(self.tab_cliente, text='PROCEDÊNCIA:', style='biblioteca.TLabel')
+        self.label_procedencia.place(x=25, y=395)
+        self.svar_procedencia = tk.StringVar()
+        self.entry_procedencia = ttk.Entry(self.tab_cliente, state='disabled', width=50, textvariable=self.svar_procedencia)
+        self.entry_procedencia.place(x=135, y=392)
+
+        self.label_data_cadastro = ttk.Label(self.tab_cliente, text='DATA CADASTRO:', style='biblioteca.TLabel')
+        self.label_data_cadastro.place(x=485, y=395)
+        self.data_cadastro = tkcalendar.DateEntry(self.tab_cliente, selectmode='day', state='disabled', date_pattern='yyyy-mm-dd')
+        self.data_cadastro.place(x=615, y=392)
+
+        self.label_endereco = ttk.Label(self.tab_cliente, text='DADOS ENDEREÇO:', style='biblioteca.TLabel')
+        self.label_endereco.place(x=25, y=435)
+
+        self.codigo_endereco = None
+
+        self.label_cep = ttk.Label(self.tab_cliente, text='CEP:', style='biblioteca.TLabel')
+        self.label_cep.place(x=25, y=475)
+        self.svar_cep = tk.StringVar()
+        self.entry_cep = ttk.Entry(self.tab_cliente, state='disabled', width=25, textvariable=self.svar_cep)
+        self.entry_cep.place(x=135, y=472)
+
+        self.imagem_ajustada = ImageTk.PhotoImage(Image.open("lupa.png").resize((12,12), Image.ANTIALIAS))
+        self.button_explorar_cep = ttk.Button(self.tab_cliente, image=self.imagem_ajustada, state='disabled', command=self.evento_pesquisar_cep_click)
+        self.button_explorar_cep.place(x=295, y=472)
+
+        self.button_pesquisar_endereco = ttk.Button(self.tab_cliente, image=self.imagem_ajustada, state='disabled', command=self.evento_pesquisar_endereco_click)
+        self.button_pesquisar_endereco.place(x=155, y=435)
+
+        self.label_logradouro = ttk.Label(self.tab_cliente, text='LOGRADOURO:', style='biblioteca.TLabel')
+        self.label_logradouro.place(x=25, y=515)
+        self.svar_logradouro = tk.StringVar()
+        self.entry_logradouro = ttk.Entry(self.tab_cliente, width=50, state='disabled', textvariable=self.svar_logradouro)
+        self.entry_logradouro.place(x=135, y=512)
+
+        self.label_numero = ttk.Label(self.tab_cliente, text='NUMERO:', style='biblioteca.TLabel')
+        self.label_numero.place(x=485, y=475)
+        self.svar_numero = tk.StringVar()
+        self.entry_numero = ttk.Entry(self.tab_cliente, width=25, state='disabled', textvariable=self.svar_numero)
+        self.entry_numero.place(x=615, y=472)
+
+        self.label_complemento = ttk.Label(self.tab_cliente, text='COMPLEMENTO:', style='biblioteca.TLabel')
+        self.label_complemento.place(x=485, y=515)
+        self.svar_complemento = tk.StringVar()
+        self.entry_complemento = ttk.Entry(self.tab_cliente, width=25, state='disabled', textvariable=self.svar_complemento)
+        self.entry_complemento.place(x=615, y=512)
+
+        self.label_bairro = ttk.Label(self.tab_cliente, text='BAIRRO:', style='biblioteca.TLabel')
+        self.label_bairro.place(x=25, y=555)
+        self.svar_bairro = tk.StringVar()
+        self.entry_bairro = ttk.Entry(self.tab_cliente, width=25, state='disabled', textvariable=self.svar_bairro)
+        self.entry_bairro.place(x=135, y=552)
+
+        self.label_cidade = ttk.Label(self.tab_cliente, text='CIDADE:', style='biblioteca.TLabel')
+        self.label_cidade.place(x=485, y=555)
+        self.svar_cidade = tk.StringVar()
+        self.entry_cidade = ttk.Entry(self.tab_cliente, width=15, state='disabled', textvariable=self.svar_cidade)
+        self.entry_cidade.place(x=615, y=552)
+
+        self.label_uf = ttk.Label(self.tab_cliente, text='UF:', style='biblioteca.TLabel')
+        self.label_uf.place(x=25, y=595)
+        self.svar_uf = tk.StringVar()
+        self.entry_uf = ttk.Entry(self.tab_cliente, width=15, state='disabled', textvariable=self.svar_uf)
+        self.entry_uf.place(x=135, y=592)
+
+        self.label_tipo_residencia = ttk.Label(self.tab_cliente, text='TIPO RESIDÊNCIA:', style='biblioteca.TLabel')
+        self.label_tipo_residencia.place(x=485, y=595)
+        self.svar_tipo_residencia = tk.StringVar()
+        self.menu_tipo_residencia = ttk.Combobox(self.tab_cliente, state='disabled', textvariable=self.svar_tipo_residencia)
+        self.menu_tipo_residencia['values'] = ['CASA', 'APARTAMENTO', 'OUTRO']
+        self.menu_tipo_residencia.place(x=615, y=592)
+
+        self.button_novo = ttk.Button(self.tab_cliente, text='NOVO', command=self.evento_novo_click)
+        self.button_novo.place(x=133, y=630)
+        self.button_editar = ttk.Button(self.tab_cliente, text='EDITAR', state='disabled',command=self.evento_editar_click)
+        self.button_editar.place(x=233, y=630)
+        self.button_salvar = ttk.Button(self.tab_cliente, text='SALVAR', state='disabled', command=self.evento_salvar_click)
+        self.button_salvar.place(x=333, y=630)
+        self.button_pesquisar = ttk.Button(self.tab_cliente, text='PESQUISAR', command=self.evento_pesquisar_click)
+        self.button_pesquisar.place(x=433, y=630)
+        self.button_cancelar = ttk.Button(self.tab_cliente, text='CANCELAR', state='disabled', command=self.evento_cancelar_click)
+        self.button_cancelar.place(x=533, y=630)
+
+        self.label_numero_ficha = ttk.Label(self.tab_ficha, text='NUMERO FICHA:', style='biblioteca.TLabel')
+        self.label_numero_ficha.place(x=25, y=25)
+        self.svar_numero_ficha = tk.StringVar()
+        self.entry_numero_ficha = ttk.Entry(self.tab_ficha, width=15, textvariable=self.svar_numero_ficha)
+        self.entry_numero_ficha.place(x=130, y=23)
+        self.label_data_inicio = ttk.Label(self.tab_ficha, text='DATA INICIO:', style='biblioteca.TLabel')
+        self.label_data_inicio.place(x=245, y=25)
+        self.data_inicio = tkcalendar.DateEntry(self.tab_ficha, selectmode='day', date_pattern='yyyy-mm-dd')
+        self.data_inicio.place(x=350, y=23)
+        self.label_data_fim = ttk.Label(self.tab_ficha, text='DATA FIM:', style='biblioteca.TLabel')
+        self.label_data_fim.place(x=465, y=25)
+        self.data_fim = tkcalendar.DateEntry(self.tab_ficha, selectmode='day', date_pattern='yyyy-mm-dd')
+        self.data_fim.place(x=600, y=23)
+        
+        self.button_pesquisar2 = ttk.Button(self.tab_ficha, text='PESQUISAR', command=self.evento_pesquisar_click2)
+        self.button_pesquisar2.place(x=720, y=25)
+        
+        self.frame_tree = tk.Frame(self.tab_ficha, background='black', width=970, height=560)
+        self.frame_tree.place(x=55, y=55)
+        self.tree = ttk.Treeview(self.frame_tree, selectmode='browse', columns=('column1', 'column2', 'column3'), show='headings')
+        self.tree.column('column1', width=50, minwidth=50, stretch=0)
+        self.tree.heading('#1', text='Ordem')
+        self.tree.column('column2', width=130, minwidth=50, stretch=0)
+        self.tree.heading('#2', text='Data criação')
+        self.tree.column('column3', width=130, minwidth=50, stretch=0)
+        self.tree.heading('#3', text='Data atualização')
+        
+        self.tree.pack(side=tk.TOP, fill=tk.BOTH)
+
+
+    def exibir_cliente(self, codigo):
+        criterios = dict()
+        criterios['codigo'] = (codigo,'=')
+        cliente = ClienteControler.pesquisar(criterios)
+        if cliente:
+            self.exibir_dados_cliente(cliente)
+            self.button_novo['state'] = 'disabled'
+            self.button_editar['state'] = 'enabled'
+            self.button_salvar['state'] = 'disabled'
+            self.button_pesquisar['state'] = 'disabled'
+            self.button_cancelar['state'] = 'enabled'   
+ 
+    def limpar(self):
+        self.codigo_cliente = None
+        self.codigo_endereco = None
+        self.svar_nome.set('')
+        self.svar_cpf.set('')
+        self.svar_rg.set('')
+        self.svar_codigo_convenio.set('')
+        self.svar_telefone_celular.set('')
+        self.svar_telefone_fixo.set('')
+        self.svar_email.set('')
+        self.svar_responsavel_nome.set('')
+        self.svar_responsavel_telefone.set('')
+        self.svar_procedencia.set('')
+        self.svar_financeiro_nome.set('')
+        self.svar_financeiro_cpf.set('')
+        self.data_cadastro['state'] = 'enabled'
+        self.data_cadastro.delete(0,tk.END)
+        self.data_cadastro['state'] = 'disabled'
+        self.svar_logradouro.set('')
+        self.svar_complemento.set('')
+        self.svar_bairro.set('')
+        self.svar_cep.set('')
+        self.svar_cidade.set('')
+        self.svar_tipo_residencia.set('')
+        self.svar_uf.set('')
+        self.svar_numero.set('')
+        self.check_financeiro.deselect()        
+
+    def evento_novo_click(self):
+        self.limpar()
+
+        self.button_novo['state'] = 'disabled'
+        self.button_editar['state'] = 'disabled'
+        self.button_salvar['state'] = 'enabled'
+        self.button_pesquisar['state'] = 'disabled'
+        self.button_cancelar['state'] = 'enabled'
+        self.button_explorar_cep['state'] = 'enabled'
+        self.button_pesquisar_endereco['state'] = 'enabled'
+
+        self.entry_logradouro['state'] = 'enabled'
+        self.entry_complemento['state'] = 'enabled'
+        self.entry_bairro['state'] = 'enabled'
+        self.entry_cidade['state'] = 'enabled'
+        self.entry_numero['state'] = 'enabled'
+        self.entry_uf['state'] = 'enabled'
+        self.menu_tipo_residencia['state'] = 'enabled'
+        self.entry_nome['state'] = 'enabled'
+        self.entry_cpf['state'] = 'enabled'
+        self.entry_rg['state'] = 'enabled'
+        self.menu_codigo_convenio['state'] = 'enabled'
+        self.entry_telefone_celular['state'] = 'enabled'
+        self.entry_telefone_fixo['state'] = 'enabled'
+        self.entry_email['state'] = 'enabled'
+        self.entry_responsavel_nome['state'] = 'enabled'
+        self.entry_responsavel_telefone['state'] = 'enabled'
+        self.entry_procedencia['state'] = 'enabled'
+        self.check_financeiro['state'] = 'active'
+        self.entry_financeiro_cpf['state'] = 'enabled'
+        self.entry_financeiro_nome['state'] = 'enabled'
+        self.data_cadastro['state'] = 'enabled'
+        self.entry_cep['state'] = 'enabled'
+
+    def alternar_checkbox(self):
+        if self.int_financeiro.get():
+            cpf = self.svar_cpf.get()
+            nome = self.svar_nome.get()
+            self.svar_financeiro_cpf.set(cpf)
+            self.svar_financeiro_nome.set(nome)
+            self.entry_financeiro_cpf['state'] = 'disabled'
+            self.entry_financeiro_nome['state'] = 'disabled'            
+        else:
+            self.entry_financeiro_cpf['state'] = 'enabled'
+            self.entry_financeiro_nome['state'] = 'enabled'
+            self.svar_financeiro_nome.set('')
+            self.svar_financeiro_cpf.set('')
+         
+    def evento_cancelar_click(self):
+        self.limpar()
+        self.tab_view.tab(self.tab_ficha, state='disabled')
+
+        self.entry_nome['state'] = 'enabled'
+        self.entry_email['state'] = 'enabled'
+        self.entry_cpf['state'] = 'disabled'
+        self.entry_rg['state'] = 'disabled'
+        self.menu_codigo_convenio['state'] = 'disabled'
+        self.entry_telefone_celular['state'] = 'disabled'
+        self.entry_telefone_fixo['state'] = 'disabled'
+        self.entry_responsavel_nome['state'] = 'disabled'
+        self.entry_responsavel_telefone['state'] = 'disabled'
+        self.entry_procedencia['state'] = 'disabled'
+        self.entry_financeiro_cpf['state'] = 'disabled'
+        self.entry_financeiro_nome['state'] = 'disabled'
+        self.data_cadastro['state'] = 'disabled'
+        self.entry_logradouro['state'] = 'disabled'
+        self.entry_complemento['state'] = 'disabled'
+        self.entry_bairro['state'] = 'disabled'
+        self.entry_cidade['state'] = 'disabled'
+        self.entry_numero['state'] = 'disabled'
+        self.entry_uf['state'] = 'disabled'
+        self.menu_tipo_residencia['state'] = 'disabled'
+        self.entry_cep['state'] = 'disabled'
+        self.check_financeiro['state'] = 'disabled'
+
+        self.button_novo['state'] = 'enabled'
+        self.button_editar['state'] = 'disabled'
+        self.button_salvar['state'] = 'disabled'
+        self.button_pesquisar['state'] = 'enabled'
+        self.button_cancelar['state'] = 'disabled'
+        self.button_explorar_cep['state'] = 'disabled'       
+        self.button_pesquisar_endereco['state'] = 'disabled'
+
+    def evento_salvar_click(self):
+
+        cep = self.svar_cep.get()
+        logradouro = self.svar_logradouro.get()
+        complemento = self.svar_complemento.get()
+        bairro = self.svar_bairro.get()
+        cidade = self.svar_cidade.get()
+        numero = self.svar_numero.get()
+        uf = self.svar_uf.get()
+        tipo_residencia = self.svar_tipo_residencia.get()
+        novo_endereco = Endereco(self.codigo_endereco, cep, logradouro.upper(), numero, complemento.upper(), bairro.upper(), cidade, uf, tipo_residencia)
+        
+        nome = self.svar_nome.get()
+        cpf = self.svar_cpf.get()
+        rg = self.svar_rg.get()
+        codigo_convenio = self.svar_codigo_convenio.get()
+        telefone_celular = self.svar_telefone_celular.get()
+        telefone_fixo = self.svar_telefone_fixo.get()
+        email = self.svar_email.get()
+        responsavel_nome = self.svar_responsavel_nome.get()
+        responsavel_telefone = self.svar_responsavel_telefone.get()
+        procedencia = self.svar_procedencia.get()
+        financeiro_nome = self.svar_financeiro_nome.get()
+        financeiro_cpf = self.svar_financeiro_cpf.get()
+        data_cadastro = self.data_cadastro.get()      
+
+        novo_registro = Cliente(self.codigo_cliente, nome.upper(), rg, cpf, codigo_convenio.upper(), telefone_celular, telefone_fixo, email.upper(), responsavel_nome.upper(), responsavel_telefone, procedencia.upper(), financeiro_nome.upper(), financeiro_cpf, data_cadastro, True, None)
+        try:
+            if not self.codigo_endereco:
+                novo_endereco.codigo = str(uuid.uuid4())
+                EnderecoControler.inserir(novo_endereco)
+            novo_registro.codigo_endereco = novo_endereco.codigo
+
+            if not self.codigo_cliente:
+                novo_registro.codigo = str(uuid.uuid4())
+                ClienteControler.inserir(novo_registro)
+                messagebox.showinfo('Sucesso', 'Cliente cadastrado com sucesso' )
+            else:
+                ClienteControler.atualizar(novo_registro)
+                EnderecoControler.atualizar(novo_endereco)
+                messagebox.showinfo('Sucesso', 'Cliente atualizado com sucesso')
+            self.evento_cancelar_click()
+        except AttributeError as erro:
+            messagebox.showerror('Erro no cadastro', str(erro))
+        self.focus()
+
+    def evento_pesquisar_click(self):
+        try:
+            email = self.svar_email.get()
+            nome = self.svar_nome.get()
+            
+            criterios = dict()
+            if len(email.strip()) > 0:
+                criterios['email'] = ('%'+email.upper()+'%','LIKE')
+            if len(nome.strip()) > 0:
+                criterios['nome'] = ('%'+nome.upper()+'%','LIKE')
+
+            cliente = ClienteControler.pesquisar(criterios)
+            if cliente:
+                self.button_novo['state'] = 'disabled'
+                self.button_editar['state'] = 'enabled'
+                self.button_salvar['state'] = 'disabled'
+                self.button_pesquisar['state'] = 'disabled'
+                self.button_cancelar['state'] = 'enabled'   
+                self.exibir_dados_cliente(cliente)     
+            else:
+                messagebox.showwarning('Nenhum registro encontrado', 'Não foi encontrado o registro solicitado')
+        except:
+            messagebox.showerror('Erro na pesquisa', 'Gentileza preencher pelo menos um dos campos obrigatórios')
+        self.focus()
+
+    def evento_editar_click(self):
+        self.entry_logradouro['state'] = 'enabled'
+        self.entry_complemento['state'] = 'enabled'
+        self.entry_bairro['state'] = 'enabled'
+        self.entry_cidade['state'] = 'enabled'
+        self.entry_numero['state'] = 'enabled'
+        self.entry_uf['state'] = 'enabled'
+        self.menu_tipo_residencia['state'] = 'enabled'
+        self.entry_nome['state'] = 'enabled'
+        self.entry_cpf['state'] = 'enabled'
+        self.entry_rg['state'] = 'enabled'
+        self.menu_codigo_convenio['state'] = 'enabled'
+        self.entry_telefone_celular['state'] = 'enabled'
+        self.entry_telefone_fixo['state'] = 'enabled'
+        self.entry_email['state'] = 'enabled'
+        self.entry_responsavel_nome['state'] = 'enabled'
+        self.entry_responsavel_telefone['state'] = 'enabled'
+        self.entry_procedencia['state'] = 'enabled'
+        self.entry_financeiro_cpf['state'] = 'enabled'
+        self.entry_financeiro_nome['state'] = 'enabled'
+        self.data_cadastro['state'] = 'enabled'
+        self.entry_cep['state'] = 'enabled'
+        self.check_financeiro['state'] = 'active'
+            
+        self.button_novo['state'] = 'disabled'
+        self.button_salvar['state'] = 'enabled'
+        self.button_pesquisar['state'] = 'disabled'
+        self.button_cancelar['state'] = 'enabled'
+
+
+class JanelaUsuario(tk.Toplevel):
+
+    def __init__(self, master):
+        super().__init__(master = master)
+        self.title('Cadastro de usuários')
+        self.novo_registro = False
+        self.grab_set()        
+
+        self.window_width = 600
+        self.window_height = 300
+        largura_screen = self.winfo_screenwidth()
+        altura_screen = self.winfo_screenheight()
+        posx = largura_screen/2 - self.window_width/2
+        posy = altura_screen/2 - self.window_height/2
+        self.geometry('%dx%d+%d+%d' % (self.window_width, self.window_height, posx, posy))
+        self.resizable(False, False)
+
+        self.label_codigo = ttk.Label(self, text='CÓDIGO:', style='biblioteca.TLabel')
+        #self.label_codigo.place(x=25, y=35)
+        self.svar_codigo = tk.StringVar()
+        self.entry_codigo = ttk.Entry(self, textvariable=self.svar_codigo)
+        #self.entry_codigo.place(x=135, y=32)
+
+        self.label_usuario = ttk.Label(self, text='USUARIO:', style='biblioteca.TLabel')
+        self.label_usuario.place(x=25, y=35)
+        self.svar_usuario = tk.StringVar()
+        self.entry_usuario = ttk.Entry(self, width=50, textvariable=self.svar_usuario)
+        self.entry_usuario.place(x=135, y=32)
+
+        self.label_senha = ttk.Label(self, text='SENHA:', style='biblioteca.TLabel')
+        self.label_senha.place(x=25, y=75)  
+        self.svar_senha = tk.StringVar()
+        self.entry_senha = ttk.Entry(self, state='disabled', width=50, textvariable=self.svar_senha)
+        self.entry_senha.place(x=135, y=72)
+
+        self.label_palavra_secreta = ttk.Label(self, text='PALAVRA SECRETA:', style='biblioteca.TLabel')
+        self.label_palavra_secreta.place(x=25, y=115)
+        self.svar_palavra_secreta = tk.StringVar()
+        self.entry_palavra_secreta = ttk.Entry(self, state='disabled', width=50, textvariable=self.svar_palavra_secreta)
+        self.entry_palavra_secreta.place(x=135, y=112)
+
+        self.label_email = ttk.Label(self, text='EMAIL:', style='biblioteca.TLabel')
+        self.label_email.place(x=25, y=155)
+        self.svar_email = tk.StringVar()
+        self.entry_email = ttk.Entry(self, state='disabled', width=50, textvariable=self.svar_email)
+        self.entry_email.place(x=135, y=152)
+
+        self.button_novo = ttk.Button(self, text='NOVO', command=self.evento_novo_click)
+        self.button_novo.place(x=55, y=215)
+        self.button_editar = ttk.Button(self, text='EDITAR', state='disabled',command=self.evento_editar_click)
+        self.button_editar.place(x=155, y=215)
+        self.button_salvar = ttk.Button(self, text='SALVAR', state='disabled', command=self.evento_salvar_click)
+        self.button_salvar.place(x=255, y=215)
+        self.button_pesquisar = ttk.Button(self, text='PESQUISAR', command=self.evento_pesquisar_click)
+        self.button_pesquisar.place(x=355, y=215)
+        self.button_cancelar = ttk.Button(self, text='CANCELAR', state='disabled', command=self.evento_cancelar_click)
+        self.button_cancelar.place(x=455, y=215)
+
+    def evento_novo_click(self):
+        self.svar_codigo.set('')
+        self.svar_usuario.set('')
+        self.svar_senha.set('')
+        self.svar_email.set('')
+        self.svar_palavra_secreta.set('')
+
+        self.button_novo['state'] = 'disabled'
+        self.button_editar['state'] = 'disabled'
+        self.button_salvar['state'] = 'enabled'
+        self.button_pesquisar['state'] = 'disabled'
+        self.button_cancelar['state'] = 'enabled'
+
+        self.entry_usuario['state'] = 'enabled'
+        self.entry_senha['state'] = 'enabled'
+        self.entry_email['state'] = 'enabled'
+        self.entry_palavra_secreta['state'] = 'enabled'
+  
+        self.novo_registro = True
+
+    def evento_cancelar_click(self):
+        self.svar_codigo.set('')
+        self.svar_usuario.set('')
+        self.svar_senha.set('')
+        self.svar_email.set('')
+        self.svar_palavra_secreta.set('')
+
+        self.entry_senha['state'] = 'disabled'
+        self.entry_email['state'] = 'disabled'
+        self.entry_palavra_secreta['state'] = 'disabled'
+
+        self.button_novo['state'] = 'enabled'
+        self.button_editar['state'] = 'disabled'
+        self.button_salvar['state'] = 'disabled'
+        self.button_pesquisar['state'] = 'enabled'
+        self.button_cancelar['state'] = 'disabled'
+        
+        self.novo_registro = False
+
+    def evento_salvar_click(self):
+        codigo = self.svar_codigo.get()
+        usuario = self.svar_usuario.get()
+        senha = self.svar_senha.get()
+        email = self.svar_email.get()
+        palavra_secreta = self.svar_palavra_secreta.get()
+        if len(usuario.strip()) == 0 or len(senha.strip()) == 0 or len(email.strip()) == 0 or len(palavra_secreta.strip()) == 0:
+            messagebox.showerror('Cadastro não realizado', 'Gentileza preencher todos os campos obrigatórios')
+            JanelaUsuario.focus_set(self)
+        else:
+            novo_usuario = Usuario(codigo, usuario.upper(), senha.upper(), email.upper(), palavra_secreta.upper(), status = True)
+
+            try:
+                if self.novo_registro:
+                    UsuarioControler.inserir(novo_usuario)
+                    messagebox.showinfo('Sucesso', 'Usuario cadastrado com sucesso' )
+                    JanelaUsuario.focus_set(self)
+                else:
+                    UsuarioControler.atualizar(novo_usuario)
+                    messagebox.showinfo('Sucesso', 'Registro atualizado com sucesso' )
+                    JanelaUsuario.focus_set(self)
+            except AttributeError as erro:
+                messagebox.showerror('Erro no cadastro', str(erro))
+                JanelaUsuario.focus_set(self)
+        self.evento_cancelar_click()
+
+    def evento_editar_click(self):
+        self.entry_usuario['state'] = 'enabled'
+        self.entry_senha['state'] = 'enabled'
+        self.entry_email['state'] = 'enabled'
+        self.entry_palavra_secreta['state'] = 'enabled'
+        self.button_novo['state'] = 'disabled'
+        self.button_salvar['state'] = 'enabled'
+        self.button_pesquisar['state'] = 'disabled'
+        self.button_cancelar['state'] = 'enabled'
+        
+
+    def evento_pesquisar_click(self):
+        usuario = self.svar_usuario.get()
+                
+        criterios = dict()
+        if len(usuario.strip()) > 0:
+            criterios['usuario'] = ('%'+usuario.upper()+'%','LIKE')
+
+        usuario = UsuarioControler.pesquisar(criterios)
+        if usuario:
+            self.entry_usuario['state'] = 'disabled'
+            self.entry_senha['state'] = 'disabled'
+            self.entry_email['state'] = 'disabled'
+            self.entry_palavra_secreta['state'] = 'disabled'
+            self.button_novo['state'] = 'disabled'
+            self.button_editar['state'] = 'enabled'
+            self.button_salvar['state'] = 'disabled'
+            self.button_pesquisar['state'] = 'disabled'
+            self.button_cancelar['state'] = 'enabled'
+            self.svar_codigo.set(usuario[4])
+            self.svar_usuario.set(usuario[0])
+            self.svar_senha.set(usuario[1])
+            self.svar_email.set(usuario[2])
+            self.svar_palavra_secreta.set(usuario[3])
+        else:
+            messagebox.showwarning('Nenhum registro encontrado', 'Não foi encontrado o registro solicitado')
+            JanelaUsuario.focus_set(self)
+
+
+class JanelaFicha(tk.Toplevel):
+
+    def __init__(self, master, codigo_ficha = None):
+        super().__init__(master = master)        
+        self.title('Ficha de cliente')
+        self.grab_set()
+
+        self.window_width = 1050
+        self.window_height = 700
+        largura_screen = self.winfo_screenwidth()
+        altura_screen = self.winfo_screenheight()
+        posx = largura_screen/2 - self.window_width/2
+        posy = altura_screen/2 - self.window_height/2
+        self.geometry('%dx%d+%d+%d' % (self.window_width, self.window_height, posx, posy))
+        self.resizable(False, False)
+
+        self.tab_view = ttk.Notebook(self)
+        self.tab_ficha1 = ttk.Frame(self.tab_view)
+        self.tab_view.add(self.tab_ficha1, text='Parte 1')
+        self.tab_ficha2 = ttk.Frame(self.tab_view)
+        self.tab_view.add(self.tab_ficha2, text='Parte 2')
+        self.tab_ficha3 = ttk.Frame(self.tab_view)
+        self.tab_view.add(self.tab_ficha3, text='Parte 3')
+        self.tab_view.pack(expand=1, fill='both')
+        self.imagem_logo = ImageTk.PhotoImage(Image.open("Logo.png").resize((140,80), Image.ANTIALIAS))
+        self.label_imagem_logo = ttk.Label(self, image=self.imagem_logo)
+        self.label_imagem_logo.place(x=845, y=20)
+
+        #TODO no text da label_titulo, colocar o nome do usuario
+        self.label_titulo = ttk.Label(self, text= 'Avaliação - Anamnese Fisioterapeuta', font=('Arial', 14, 'bold'), style='biblioteca.TLabel')
+        self.label_titulo.place(x=25, y=35)
+        self.label_nome = ttk.Label(self, text= 'Nome do paciente:', style='biblioteca.TLabel')
+        self.label_nome.place(x=25, y=85)
+        self.svar_nome = tk.StringVar()
+        self.entry_nome = ttk.Entry(self, state='enabled', width=60, textvariable=self.svar_nome)
+        self.entry_nome.place(x=135, y=82)
+        self.label_data_criacao = ttk.Label(self, text='Data Criação:', style='biblioteca.TLabel')
+        self.label_data_criacao.place(x=600, y=45)
+        self.data_criacao = tkcalendar.DateEntry(self, selectmode='day', date_pattern='yyyy-mm-dd')
+        self.data_criacao.place(x=715, y=42)
+        self.label_data_atualizacao = ttk.Label(self, text='Data Atualização:', style='biblioteca.TLabel')
+        self.label_data_atualizacao.place(x=600, y=85)
+        self.data_atualizacao = tkcalendar.DateEntry(self, selectmode='day', date_pattern='yyyy-mm-dd')
+        self.data_atualizacao.place(x=715, y=82)
+        self.label_sexo = ttk.Label(self.tab_ficha1, text= 'Sexo:', style='biblioteca.TLabel')
+        self.label_sexo.place(x=25, y=125)
+        self.svar_sexo = tk.StringVar()
+        self.check_masculino = tk.Radiobutton(self.tab_ficha1, text='Masculino', value='S', variable=self.svar_sexo) 
+        self.check_masculino.place(x=75, y=125)
+        self.check_feminino = tk.Radiobutton(self.tab_ficha1, text='Feminino', value='N', variable=self.svar_sexo)
+        self.check_feminino.place(x=155, y=125)
+        self.svar_sexo.set(None)
+        self.svar_peso = tk.DoubleVar()
+        self.label_peso = ttk.Label(self.tab_ficha1, text='Peso:', style='biblioteca.TLabel')
+        self.label_peso.place(x=305, y=125)
+        self.entry_peso = ttk.Entry(self.tab_ficha1, state='enabled', width=10, textvariable=self.svar_peso)
+        self.entry_peso.place(x=345, y=122)
+        self.svar_altura = tk.DoubleVar()
+        self.label_altura = ttk.Label(self.tab_ficha1, text='Altura:', style='biblioteca.TLabel')
+        self.label_altura.place(x=305, y=165)
+        self.entry_altura = ttk.Entry(self.tab_ficha1, state='enabled', width=10, textvariable=self.svar_altura)
+        self.entry_altura.place(x=345, y=162)
+        self.svar_profissao = tk.StringVar()
+        self.label_profissao = ttk.Label(self.tab_ficha1, text='Profissão:', style='biblioteca.TLabel')
+        self.label_profissao.place(x=600, y=165)
+        self.entry_profissao = ttk.Entry(self.tab_ficha1, state='enabled', width=20, textvariable=self.svar_profissao)
+        self.entry_profissao.place(x=715, y=162)
+        self.svar_estado_civil = tk.StringVar()
+        self.label_estado_civil = ttk.Label(self.tab_ficha1, text='Estado Civil:', style='biblioteca.TLabel')
+        self.label_estado_civil.place(x=25, y=165)
+        self.entry_estado_civil = ttk.Entry(self.tab_ficha1, state='enabled', width=30, textvariable=self.svar_estado_civil)
+        self.entry_estado_civil.place(x=105, y=162)
+        self.label_data_nascimento = ttk.Label(self.tab_ficha1, text='Data Nascimento:', style='biblioteca.TLabel')
+        self.label_data_nascimento.place(x=600, y=125)
+        self.data_nascimento = tkcalendar.DateEntry(self.tab_ficha1, selectmode='day', date_pattern='yyyy-mm-dd')
+        self.data_nascimento.place(x=715, y=122)
+        self.svar_numero_ficha = tk.StringVar()
+        self.label_numero_ficha = ttk.Label(self.tab_ficha1, text='# Ficha:', style='biblioteca.TLabel')
+        self.label_numero_ficha.place(x=25, y=85)
+        self.entry_numero_ficha = ttk.Entry(self.tab_ficha1, state='enabled', width=20, textvariable=self.svar_numero_ficha)
+        self.entry_numero_ficha.place(x=135, y=82)
+
+        #aba 1
+        self.text_objetivo = tk.Text(self.tab_ficha1, width=120, height= 10)
+        objetivo = 'Objetivo'
+        self.text_objetivo.insert(tk.END, objetivo) #TODO apagar a palavra quando clicar no text
+        self.text_objetivo.place(x=25, y=205)
+        #self.label_contorno1 = tk.LabelFrame(self.tab_ficha1, width=600, height=200) #TODO ajustar o labelframe
+        #self.label_contorno1.place(x=25, y=35)
+        self.label_atividade = ttk.Label(self.tab_ficha1, text='Atividade:', style='biblioteca.TLabel')
+        self.label_atividade.place(x=25, y=385)
+        self.svar_atividade = tk.StringVar()
+        self.check_atividade1 = tk.Radiobutton(self.tab_ficha1, text='Sim', value='S', variable=self.svar_atividade) 
+        self.check_atividade1.place(x=25, y=415)
+        self.check_atividade2 = tk.Radiobutton(self.tab_ficha1, text='Não', value='N', variable=self.svar_atividade)
+        self.check_atividade2.place(x=75, y=415)
+        self.check_atividade3 = tk.Radiobutton(self.tab_ficha1, text='Passado', value='P', variable=self.svar_atividade)
+        self.check_atividade3.place(x=125, y=415)
+        self.svar_atividade.set(None)
+        self.text_atividade = tk.Text(self.tab_ficha1, width=120, height= 10)
+        atividade = 'Quais'
+        self.text_atividade.insert(tk.END, atividade) #TODO apagar a palavra quando clicar no text
+        self.text_atividade.place(x=25, y=455)
+
+        self.imagem_avancar = ImageTk.PhotoImage(Image.open("avancar.png").resize((12,12), Image.ANTIALIAS))
+        self.imagem_retroceder = ImageTk.PhotoImage(Image.open("retroceder.png").resize((12,12), Image.ANTIALIAS))
+        self.button_avancar = ttk.Button(self.tab_ficha1, image= self.imagem_retroceder, state='disabled', command=self.escolher_ficha1)
+        self.button_avancar.place(x=490, y=650)
+        self.button_retornar = ttk.Button(self.tab_ficha1, image= self.imagem_avancar, state='enabled', command=self.escolher_ficha2)
+        self.button_retornar.place(x=520, y=650)
+
+        #aba 2
+        self.text_queixa1 = tk.Text(self.tab_ficha2, width=120, height= 10)
+        queixa1 = 'Queixa principal'
+        self.text_queixa1.insert(tk.END, queixa1) #TODO apagar a palavra quando clicar no text
+        self.text_queixa1.place(x=25, y=105)
+        self.text_queixa2 = tk.Text(self.tab_ficha2, width=120, height= 10)
+        queixa2 = 'Queixa secundária'
+        self.text_queixa2.insert(tk.END, queixa2) #TODO apagar a palavra quando clicar no text
+        self.text_queixa2.place(x=25, y=280)
+        self.text_dignostico = tk.Text(self.tab_ficha2, width=120, height= 10)
+        dignostico = 'Diagnóstico médico'
+        self.text_dignostico.insert(tk.END, dignostico) #TODO apagar a palavra quando clicar no text
+        self.text_dignostico.place(x=25, y=455)
+
+        self.button_avancar = ttk.Button(self.tab_ficha2, image= self.imagem_retroceder, state='enabled', command=self.escolher_ficha1)
+        self.button_avancar.place(x=490, y=650)
+        self.button_retornar = ttk.Button(self.tab_ficha2, image= self.imagem_avancar, state='enabled', command=self.escolher_ficha3)
+        self.button_retornar.place(x=520, y=650)
+
+       #aba 3
+        self.text_historia = tk.Text(self.tab_ficha3, width=120, height= 10)
+        historia = 'História pregressiva de doenças'
+        self.text_historia.insert(tk.END, historia) #TODO apagar a palavra quando clicar no text
+        self.text_historia.place(x=25, y=105)
+        self.text_postura = tk.Text(self.tab_ficha3, width=120, height= 10)
+        postura = 'Avaliação Postural'
+        self.text_postura.insert(tk.END, postura) #TODO apagar a palavra quando clicar no text
+        self.text_postura.place(x=25, y=280)
+        self.text_forca = tk.Text(self.tab_ficha3, width=120, height= 10)
+        forca = 'Força muscular'
+        self.text_forca.insert(tk.END, forca) #TODO apagar a palavra quando clicar no text
+        self.text_forca.place(x=25, y=455)
+
+        self.button_avancar = ttk.Button(self.tab_ficha3, image= self.imagem_retroceder, state='enabled', command=self.escolher_ficha2)
+        self.button_avancar.place(x=490, y=650)
+        self.button_retornar = ttk.Button(self.tab_ficha3, image= self.imagem_avancar, state='disabled')
+        self.button_retornar.place(x=520, y=650)
+
+        if codigo_ficha:
+            self.exibir_ficha(codigo_ficha)
+
+    def escolher_ficha3(self):
+        self.tab_view.select(self.tab_ficha3)
+
+    def escolher_ficha2(self):
+        self.tab_view.select(self.tab_ficha2)
+
+    def escolher_ficha1(self):
+        self.tab_view.select(self.tab_ficha1)    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class JanelaEndereco(tk.Toplevel):
+
+    def __init__(self, master):
+        super().__init__(master = master)
+        self.title('Cadastro de Endereços')
+        self.novo_cadastro = False
+        self.grab_set()
+
+        self.window_width = 1050
+        self.window_height = 700
+        largura_screen = self.winfo_screenwidth()
+        altura_screen = self.winfo_screenheight()
+        posx = largura_screen/2 - self.window_width/2
+        posy = altura_screen/2 - self.window_height/2
+        self.geometry('%dx%d+%d+%d' % (self.window_width, self.window_height, posx, posy))
+        self.resizable(False, False)
+
+        self.svar_codigo = tk.StringVar()
+        self.entry_codigo = ttk.Entry(self, textvariable=self.svar_codigo)
+
+        self.label_cep = ttk.Label(self, text='CEP:', style='biblioteca.TLabel')
+        self.label_cep.place(x=25, y=35)
+        self.svar_cep = tk.StringVar()
+        self.entry_cep = ttk.Entry(self, width=25, textvariable=self.svar_cep)
+        self.entry_cep.place(x=135, y=32)
+
+        self.imagem_ajustada = ImageTk.PhotoImage(Image.open("lupa.png").resize((12,12), Image.ANTIALIAS))
+        self.button_explorar_cep = ttk.Button(self, image=self.imagem_ajustada, state='enabled', command=self.evento_pesquisar_cep_click)
+        self.button_explorar_cep.place(x=295, y=32)
+
+        self.label_logradouro = ttk.Label(self, text='LOGRADOURO:', style='biblioteca.TLabel')
+        self.label_logradouro.place(x=25, y=75)
+        self.svar_logradouro = tk.StringVar()
+        self.entry_logradouro = ttk.Entry(self, width=50, state='disabled', textvariable=self.svar_logradouro)
+        self.entry_logradouro.place(x=135, y=72)
+
+        self.label_numero = ttk.Label(self, text='NUMERO:', style='biblioteca.TLabel')
+        self.label_numero.place(x=465, y=75)
+        self.svar_numero = tk.StringVar()
+        self.entry_numero = ttk.Entry(self, width=25, state='disabled', textvariable=self.svar_numero)
+        self.entry_numero.place(x=575, y=72)
+
+        self.label_complemento = ttk.Label(self, text='COMPLEMENTO:', style='biblioteca.TLabel')
+        self.label_complemento.place(x=25, y=115)
+        self.svar_complemento = tk.StringVar()
+        self.entry_complemento = ttk.Entry(self, width=25, state='disabled', textvariable=self.svar_complemento)
+        self.entry_complemento.place(x=135, y=112)
+
+        self.label_bairro = ttk.Label(self, text='BAIRRO:', style='biblioteca.TLabel')
+        self.label_bairro.place(x=465, y=115)
+        self.svar_bairro = tk.StringVar()
+        self.entry_bairro = ttk.Entry(self, width=25, state='disabled', textvariable=self.svar_bairro)
+        self.entry_bairro.place(x=575, y=112)
+
+        self.label_cidade = ttk.Label(self, text='CIDADE:', style='biblioteca.TLabel')
+        self.label_cidade.place(x=25, y=155)
+        self.svar_cidade = tk.StringVar()
+        self.entry_cidade = ttk.Entry(self, width=15, state='disabled', textvariable=self.svar_cidade)
+        self.entry_cidade.place(x=135, y=152)
+
+        self.label_uf = ttk.Label(self, text='UF:', style='biblioteca.TLabel')
+        self.label_uf.place(x=280, y=155)
+        self.svar_uf = tk.StringVar()
+        self.entry_uf = ttk.Entry(self, width=15, state='disabled', textvariable=self.svar_uf)
+        self.entry_uf.place(x=340, y=152)
+
+        self.label_tipo_residencia = ttk.Label(self, text='TIPO RESIDÊNCIA:', style='biblioteca.TLabel')
+        self.label_tipo_residencia.place(x=465, y=155)
+        self.svar_tipo_residencia = tk.StringVar()
+        self.menu_tipo_residencia = ttk.Combobox(self, state='disabled', textvariable=self.svar_tipo_residencia)
+        self.menu_tipo_residencia['values'] = ['CASA', 'APARTAMENTO', 'OUTRO']
+        self.menu_tipo_residencia.place(x=575, y=152)
+        
+        self.button_novo = ttk.Button(self, text='NOVO', command=self.evento_novo_click)
+        self.button_novo.place(x=133, y=215)
+        self.button_editar = ttk.Button(self, text='EDITAR', state='disabled', command=self.evento_editar_click)
+        self.button_editar.place(x=233, y=215)
+        self.button_salvar = ttk.Button(self, text='SALVAR', state='disabled', command=self.evento_salvar_click)
+        self.button_salvar.place(x=333, y=215)
+        self.button_pesquisar = ttk.Button(self, text='PESQUISAR', command=self.evento_pesquisar_click)
+        self.button_pesquisar.place(x=433, y=215)
+        self.button_cancelar = ttk.Button(self, text='CANCELAR', state='disabled', command=self.evento_cancelar_click)
+        self.button_cancelar.place(x=533, y=215)
+
+    def evento_novo_click(self):
+        self.svar_codigo.set('')
+        self.svar_logradouro.set('')
+        self.svar_complemento.set('')
+        self.svar_bairro.set('')
+        self.svar_cep.set('')
+        self.svar_cidade.set('')
+        self.svar_tipo_residencia.set('')
+        self.svar_uf.set('')
+        self.svar_numero.set('')
+    
+        self.entry_logradouro['state'] = 'enabled'
+        self.entry_complemento['state'] = 'enabled'
+        self.entry_bairro['state'] = 'enabled'
+        self.entry_cidade['state'] = 'enabled'
+        self.entry_numero['state'] = 'enabled'
+        self.entry_uf['state'] = 'enabled'
+        self.menu_tipo_residencia['state'] = 'enabled'
+        self.button_novo['state'] = 'disabled'
+        self.button_editar['state'] = 'disabled'
+        self.button_salvar['state'] = 'enabled'
+        self.button_pesquisar['state'] = 'enabled'
+        self.button_cancelar['state'] = 'enabled'
+        self.novo_cadastro = True
+        
+    def evento_cancelar_click(self):
+        self.entry_logradouro['state'] = 'disabled'
+        self.entry_complemento['state'] = 'disabled'
+        self.entry_bairro['state'] = 'disabled'
+        self.entry_cidade['state'] = 'disabled'
+        self.entry_numero['state'] = 'disabled'
+        self.entry_uf['state'] = 'disabled'
+        self.menu_tipo_residencia['state'] = 'disabled'
+        self.button_novo['state'] = 'enabled'
+        self.button_editar['state'] = 'disabled'
+        self.button_salvar['state'] = 'disabled'
+        self.button_pesquisar['state'] = 'enabled'
+        self.button_cancelar['state'] = 'disabled'
+   
+        self.svar_codigo.set('')
+        self.svar_logradouro.set('')
+        self.svar_complemento.set('')
+        self.svar_bairro.set('')
+        self.svar_cep.set('')
+        self.svar_cidade.set('')
+        self.svar_tipo_residencia.set('')
+        self.svar_uf.set('')
+        self.svar_numero.set('')
+        self.novo_cadastro = False
+
+    def evento_editar_click(self):
+        self.entry_logradouro['state'] = 'enabled'
+        self.entry_complemento['state'] = 'enabled'
+        self.entry_bairro['state'] = 'enabled'
+        self.entry_cidade['state'] = 'enabled'
+        self.entry_numero['state'] = 'enabled'
+        self.entry_uf['state'] = 'enabled'
+        self.menu_tipo_residencia['state'] = 'enabled'
+        self.button_novo['state'] = 'disabled'
+        self.button_salvar['state'] = 'enabled'
+        self.button_pesquisar['state'] = 'disabled'
+        self.button_cancelar['state'] = 'enabled'
+
+    def evento_salvar_click(self):       
+        codigo = self.svar_codigo.get()
+        cep = self.svar_cep.get()
+        logradouro = self.svar_logradouro.get()
+        complemento = self.svar_complemento.get()
+        bairro = self.svar_bairro.get()
+        cidade = self.svar_cidade.get()
+        numero = self.svar_numero.get()
+        uf = self.svar_uf.get()
+        tipo_residencia = self.svar_tipo_residencia.get()
+        novo_endereco = Endereco(codigo, cep, logradouro.upper(), numero, complemento.upper(), bairro.upper(), cidade, uf, tipo_residencia)
+
+        try:
+            if self.novo_cadastro:
+                novo_endereco.codigo = str(uuid.uuid4())
+                EnderecoControler.inserir(novo_endereco)
+                messagebox.showinfo('Sucesso', 'Endereço cadastrado com sucesso' )
+            else:
+                EnderecoControler.atualizar(novo_endereco)
+                messagebox.showinfo('Sucesso', 'Registro atualizado com sucesso' )
+        except AttributeError as erro:
+            messagebox.showerror('Erro no cadastro', str(erro))
+        self.evento_cancelar_click()
+        
+    def evento_pesquisar_click(self):
+        pass
+
+    def evento_pesquisar_cep_click(self):
+        try:
+            cep = self.svar_cep.get()
+            endereco = pycep_correios.get_address_from_cep(cep)
+            if endereco:   
+                self.svar_logradouro.set(endereco['logradouro'])
+                self.svar_bairro.set(endereco['bairro'])
+                self.svar_cidade.set(endereco['cidade'])
+                self.svar_uf.set(endereco['uf'])
+        except Exception as erro:
+            messagebox.showerror(title="ERRO", message='CEP não encontrado')
+            self.focus()
+
+class JanelaLogin(tk.Toplevel):
+
+    def __init__(self, master):
+        super().__init__(master = master)
+        self.title('Login')
+        self.window_width = 300
+        self.window_height = 135
+        largura_screen = self.winfo_screenwidth()
+        altura_screen = self.winfo_screenheight()
+        posx = largura_screen/2 - self.window_width/2
+        posy = altura_screen/2 - self.window_height/2
+        self.geometry('%dx%d+%d+%d' % (self.window_width, self.window_height, posx, posy))
+        self.resizable(False, False)
+        
+
+        self.label_usuario = ttk.Label(self, text='Login: ')
+        self.label_usuario.place(x=15, y=15)
+        self.label_password = ttk.Label(self, text='Senha: ')
+        self.label_password.place(x=15, y=55)
+
+        self.svar_usuario = tk.StringVar()
+        self.entry_usuario = ttk.Entry(self, textvariable=self.svar_usuario)
+        self.entry_usuario.place(x=100, y=15)
+        self.svar_password = tk.StringVar()
+        self.entry_password = ttk.Entry(self, textvariable=self.svar_password, show='*')
+        self.entry_password.place(x=100, y=55)
+
+        self.button_ok = ttk.Button(self, text='OK', command=self.evento_ok_click)
+        self.button_ok.place(x=15, y=90)
+        self.button_cancel = ttk.Button(self, text='CANCELAR', command=self.evento_cancel_click)
+        self.button_cancel.place(x=100, y=90)
+        self.button_forgot = ttk.Button(self, text='ESQUECI', command=self.evento_esqueci_click)
+        self.button_forgot.place(x=185, y=90)
+
+        self.protocol("WM_DELETE_WINDOW", self.evento_cancel_click)
+
+    def evento_ok_click(self):
+        usuario = self.svar_usuario.get()
+        senha = self.svar_password.get()
+
+        if UsuarioControler.validar_login(usuario.upper(), senha):
+            messagebox.showinfo('SUCESSO', 'Login e senha informados estão corretos!')
+            self.master.efetuar_login(usuario)
+            self.destroy()
+        else:
+            messagebox.showwarning('DADOS INVÁLIDOS', 'Login e senha informados estão incorretos!')
+
+    def evento_cancel_click(self):
+        self.grab_release()
+        self.destroy()
+        self.master.destroy()
+
+    def evento_esqueci_click(self):
+        janela = JanelaEsqueci(self)
+
+class JanelaEsqueci(tk.Toplevel):
+
+    def __init__(self, master):
+        super().__init__(master = master)
+        self.title('Esqueci minha senha')
+        self.window_width = 350
+        self.window_height = 180
+        largura_screen = self.winfo_screenwidth()
+        altura_screen = self.winfo_screenheight()
+        posx = largura_screen/2 - self.window_width/2
+        posy = altura_screen/2 - self.window_height/2
+        self.geometry('%dx%d+%d+%d' % (self.window_width, self.window_height, posx, posy))
+        self.resizable(False, False)
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self.evento_cancel_click)
+
+        self.label_usuario = ttk.Label(self, text='*Usuário: ')
+        self.label_usuario.place(x=15, y=15)
+        self.label_palavra_secreta = ttk.Label(self, text='*Palavra secreta: ')
+        self.label_palavra_secreta.place(x=15, y=55)
+        self.label_email = ttk.Label(self, text='*E-mail cadastrado: ')
+        self.label_email.place(x=15, y=95)
+
+        self.svar_usuario = tk.StringVar()
+        self.entry_usuario = ttk.Entry(self, width=30, textvariable=self.svar_usuario)
+        self.entry_usuario.place(x=130, y=15)
+        self.svar_palavra_secreta = tk.StringVar()
+        self.entry_palavra_secreta = ttk.Entry(self, width=30, textvariable=self.svar_palavra_secreta)
+        self.entry_palavra_secreta.place(x=130, y=55)
+        self.svar_email = tk.StringVar()
+        self.entry_email = ttk.Entry(self, width=30, textvariable=self.svar_email)
+        self.entry_email.place(x=130, y=95)
+
+        self.button_pesquisar = ttk.Button(self, text='PESQUISAR', command=self.evento_pesquisar_click)
+        self.button_pesquisar.place(x=15, y=135)
+        self.button_cancel = ttk.Button(self, text='CANCELAR', command=self.evento_cancel_click)
+        self.button_cancel.place(x=110, y=135)
+
+    def evento_cancel_click(self):
+        self.grab_release()
+        self.master.grab_set()
+        self.destroy() #TODO apos cancelar ou apertando o "x", perde o grab_set da janela de login
+
+    def evento_pesquisar_click(self):
+        palavra = self.svar_palavra_secreta.get()
+        usuario = self.svar_usuario.get()
+        email = self.svar_email.get()
+
+        if len(palavra.strip()) == 0 or len(usuario.strip()) == 0 or len(email.strip()) == 0:
+           messagebox.showwarning('Pesquisa não realizada', 'Gentileza preencher todos os campos obrigatórios')
+           JanelaEsqueci.focus_set(self)
+        
+        elif UsuarioControler.validar_esqueci(usuario.upper(), palavra.upper(), email):
+            messagebox.showinfo('SUCESSO', 'Sua senha foi enviada por e-mail!')
+            criterios = dict()
+            criterios['palavra_secreta'] = (palavra.upper(),'=')
+            criterios['usuario'] = (usuario.upper(),'=')
+            criterios['email'] = (email,'=')
+            usuario = UsuarioControler.pesquisar(criterios)
+
+            subject = 'Recuperação de senha'
+            email_sender = 'lbwhises@gmail.com'
+            email_password = segredo.segredo
+            email_receiver = 'marcelotablas@gmail.com'
+            body = f'Prezado {usuario[0]},\n\nFoi solicitada a recuperação de sua senha para sua conta no Sistema Clinica.\nSegue: {usuario[1]}'
+            em = EmailMessage()
+            em['From'] = email_sender
+            em['To'] = email_receiver
+            em['Subject'] = subject
+            em.set_content(body)
+
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as smtp:
+                smtp.login(email_sender,email_password)
+                smtp.sendmail(email_sender, email_receiver, em.as_string())
+            self.destroy()
+
+        else:
+            messagebox.showwarning('DADOS INVÁLIDOS', 'Nenhum registro encontrado. Gentileza revisar os campos Usuário, Palavra secreta e E-mail cadastrado!') #TODO se eu preencho o email errado, não aparece msg de erro
+
+
